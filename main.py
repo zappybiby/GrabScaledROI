@@ -18,14 +18,21 @@ def get_top_k_colors_kmeans(roi_bgr, k=3):
     Given an ROI in BGR (uint8), run KMeans to get top-k dominant colors.
     Returns a list of dicts with BGR, Hex, HSV (OpenCV range), and percentage.
     """
-    pixels = roi_bgr.reshape((-1, 3))
-    pixels = np.float32(pixels)
+    if roi_bgr is None or roi_bgr.size == 0:
+        return []
+
+    # Ensure 3-channel
+    if len(roi_bgr.shape) == 2:
+        roi_bgr = cv2.cvtColor(roi_bgr, cv2.COLOR_GRAY2BGR)
+
+    # Flatten ROI to N x 3 array of pixels
+    pixels = roi_bgr.reshape((-1, 3)).astype(np.float32)
 
     num_pixels = pixels.shape[0]
     if num_pixels == 0:
         return []
 
-    k = min(k, num_pixels)
+    k = min(k, num_pixels)  # avoid asking for more clusters than pixels
 
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
     compactness, labels, centers = cv2.kmeans(
@@ -38,10 +45,10 @@ def get_top_k_colors_kmeans(roi_bgr, k=3):
     )
 
     labels = labels.flatten()
-    centers = np.uint8(centers)
+    centers = np.uint8(centers)  # (k, 3)
 
     unique_labels, counts = np.unique(labels, return_counts=True)
-    sort_idx = np.argsort(-counts)
+    sort_idx = np.argsort(-counts)  # descending
 
     sorted_centers = centers[sort_idx]
     sorted_counts = counts[sort_idx]
@@ -52,13 +59,13 @@ def get_top_k_colors_kmeans(roi_bgr, k=3):
     for center_bgr, count in zip(sorted_centers, sorted_counts):
         b, g, r = int(center_bgr[0]), int(center_bgr[1]), int(center_bgr[2])
 
+        # Hex is RGB
         hex_color = "#{:02X}{:02X}{:02X}".format(r, g, b)
 
-        hsv = cv2.cvtColor(
-            np.uint8([[center_bgr.reshape(1, 3)]]),
-            cv2.COLOR_BGR2HSV
-        )[0][0]
-        h, s, v = int(hsv[0]), int(hsv[1]), int(hsv[2])
+        # make (1,1,3) BGR image
+        bgr_img = np.uint8([[center_bgr]])
+        hsv_pixel = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)[0, 0]
+        h, s, v = int(hsv_pixel[0]), int(hsv_pixel[1]), int(hsv_pixel[2])
 
         percentage = 100.0 * count / total_pixels
 
@@ -70,7 +77,6 @@ def get_top_k_colors_kmeans(roi_bgr, k=3):
         })
 
     return colors
-
 
 def save_roi_snapshot(roi_bgr, summary_text):
     """
